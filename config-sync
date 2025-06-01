@@ -1,0 +1,40 @@
+#!/bin/python
+
+import os
+import re
+import sys
+
+def invoke_configuration_sync(device_group):
+    print("\n[+] The configuration sync has been successfully invoked.\n")
+    os.popen("tmsh run cm config-sync to-group " + device_group)
+
+def retrieve_sys_name():
+    global_settings_data = os.popen("tmsh list sys global-settings hostname").read()
+    
+    pattern = re.compile("^\s+hostname\s+(.+?)$", re.MULTILINE)
+    if re.search(pattern, global_settings_data):
+        return re.search(pattern, global_settings_data).group(1)
+    else:
+        print("\n[-] The script is unable to retrieve the LB hostname.\n")
+        sys.exit(1)
+        
+def initiate_config_sync():
+    sync_status_data = os.popen("tmsh show cm sync-status").read()
+
+    pattern = re.compile("All devices in the device group are in sync$", re.MULTILINE)
+    if re.search(pattern, sync_status_data):
+        print("\n[+] The configuration is already in sync.\n")
+        sys.exit(1)
+
+    pattern = re.compile("^.+Synchronize\s(.+?)\sto\sgroup\s(.+?)$", re.MULTILINE)
+    if re.search(pattern, sync_status_data):
+        lb, device_group = re.search(pattern, sync_status_data).group(1,2)
+        if lb not in (retrieve_sys_name(), "this device"):
+            print("\n[-] The configuration sync should be initiated from the redundant LB.\n")
+        else:
+            invoke_configuration_sync(device_group)
+    else:
+        print("\n[-] The script is unable to retrieve the LB sync status.\n")
+        sys.exit(1)
+    
+initiate_config_sync()
