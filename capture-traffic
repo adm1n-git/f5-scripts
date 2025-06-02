@@ -1,0 +1,79 @@
+#!/bin/python
+
+import sys
+import os
+import re
+from datetime import datetime
+
+def invoke_traffic_capture(capture_filter, path):
+    print("[+] The traffic capture has been successfully invoked.\n")
+    command = "tcpdump -i 0.0:nnnp -c 1000000 -s 0 %s -w %s -v" % (capture_filter, path)
+    print("[*] %s\n" % (command))
+    os.system(command)
+    
+def retrieve_sys_name():
+    global_settings_data = os.popen("tmsh list sys global-settings hostname").read()
+    
+    pattern = re.compile("^\s+hostname\s+(.+?)$", re.MULTILINE)
+    if re.search(pattern, global_settings_data):
+        return re.search(pattern, global_settings_data).group(1)
+    else:
+        print("\n[-] The script is unable to retrieve the LB hostname.\n")
+        sys.exit(1)
+        
+def prepare_capture_file_path():
+    date = datetime.now().strftime("%d%m%Y")
+    for index in range(0,100):
+        path = "/shared/tmp/" + retrieve_sys_name() + "_" + str(date) + "_" + str(index) + ".pcap"
+        if not os.path.exists(path):
+            break
+    else:
+        print("[-] The script is unable to form a file path.")
+        sys.exit(1)
+        
+    print("[+] The capture path \"%s\" has been prepared." % (path))
+    
+    return path
+    
+def prepare_traffic_capture_filters(source_ip, destination_ip):
+    if destination_ip != str():
+        capture_filter = "host %s and host %s" % (source_ip, destination_ip)
+    else:
+        capture_filter = "host %s" % (source_ip)
+        
+    print("[+] The traffic capture filters have been prepared.")
+        
+    return capture_filter
+    
+def validate_disk_usage():
+    disk_usage_data = os.popen("df -h /shared/tmp/").read()
+    
+    pattern = re.compile(r"(.+?)\s+(.+?)\s+(.+?)\s+(.+?)\s+(?P<disk_usage>\d+)%\s+/shared", re.MULTILINE)
+    if re.search(pattern, disk_usage_data):
+        disk_usage = re.search(pattern, disk_usage_data).group("disk_usage")
+    else:
+        print("\n[-] The script is unable to validate the disk usage.\n")
+        sys.exit(1)
+        
+    if int(disk_usage) >= 80:
+        print("\n[-] The partition \"/shared/tmp\" usage is above 80%. The capture files can't be stored on the partition.\n")
+    else:
+        print("\n[+] The partition \"/shared/tmp\" usage is below 80%. The capture files can be stored on the partition.")    
+        
+def main(source_ip, destination_ip):
+    validate_disk_usage()
+    
+    capture_filter = prepare_traffic_capture_filters(source_ip, destination_ip)
+    path = prepare_capture_file_path()
+    
+    invoke_traffic_capture(capture_filter, path)
+
+if __name__ == "__main__":
+    if len(sys.argv[1:]) < 1:
+        print("\n[+] Usage: %s source-ip destination-ip\n" % (sys.argv[0]))
+    else:
+        if len(sys.argv[1:]) == 1:
+            main(sys.argv[1], str())
+
+        if len(sys.argv[1:]) == 2:
+            main(sys.argv[1], sys.argv[2])
